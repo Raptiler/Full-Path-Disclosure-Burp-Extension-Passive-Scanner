@@ -25,7 +25,7 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         self._callbacks.registerScannerCheck(self)
 
 
-        self.windows_path_regex = re.compile(r'[a-zA-Z]:\\(?:[^\\\/:*?"<>|\r\n]+\\)+[^\\\/:*?"<>|\r\n]+')
+        self.windows_path_regex = re.compile(r'(?<![a-zA-Z])([a-zA-Z]:\\(?:[^\\\/:*?"<>|\r\n]+\\)+[^\\\/:*?"<>|\r\n]+)')
         directories = [
             "Applications", "System", "Volumes", "cores", "etc", "opt", "sbin", "usr",
             "Library", "Users", "bin", "dev", "home", "private", "tmp", "var"
