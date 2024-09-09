@@ -1,53 +1,37 @@
 # -*- coding: utf-8 -*-
 
-from burp import IBurpExtender, IScannerCheck, IScanIssue
-from burp import IExtensionHelpers
+from burp import IBurpExtender, IScannerCheck, IScanIssue, IExtensionStateListener
 import re
 import array
 
-class BurpExtender(IBurpExtender, IScannerCheck):
+class BurpExtender(IBurpExtender, IScannerCheck, IExtensionStateListener):
 
     def registerExtenderCallbacks(self, callbacks):
         print("Extension Created By: Paweł Zdunek - AFINE Team")
-        print("""
-        AAAAAAAAAAAAA       FFFFFFFF       IIII        NNN        NN     EEEEEEEEEEEE
-        A           A      F                I          NN NN      NN     E
-        A           A      F                I          NN  NN     NN     E
-        A           A      FFFFF             I         NN   NN    NN     EEEEEEEE
-        AAAAAAAAAAAAA       F                I         NN    NN   NN     E
-        A           A      F                I          NN     NN  NN     E
-        A           A      F                I          NN      NN NN     E
-        A           A      F              IIIIIII      NN        NNN     EEEEEEEEEEEE
-        # """)
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
         self._callbacks.setExtensionName("FPD Scanner")
         self._callbacks.registerScannerCheck(self)
+        self._callbacks.registerExtensionStateListener(self)  # Rejestrujemy handler
 
-
-        self.windows_path_regex = re.compile(r'(?<![a-zA-Z])([a-zA-Z]:\\(?:[^\\\/:*?"<>|\r\n]+\\)+[^\\\/:*?"<>|\r\n]+)')
+        self.windows_path_regex = re.compile(r'(?<![a-zA-Z0-9])([a-zA-Z]:\\(?:[a-zA-Z0-9_\-.\(\)\[\]{}#@!$^&~]+\\)+[a-zA-Z0-9_\-.\(\)\[\]{}#@!$^&~]+)(?!\\u[0-9a-fA-F]{4})')
         directories = [
             "Applications", "System", "Volumes", "cores", "etc", "opt", "sbin", "usr",
             "Library", "Users", "bin", "dev", "home", "private", "tmp", "var"
         ]
-        self.unix_path_regex = re.compile(r'\/(?:' + '|'.join(directories) + r')\/[^\/\s]+(?:\/[^\/\s]+)*')
+        self.unix_path_regex = re.compile(r'(?<![a-zA-Z0-9])\/(?:' + '|'.join(directories) + r')\/[a-zA-Z0-9_\-.\(\)\[\]{}#@!$^&~]+(?:\/[a-zA-Z0-9_\-.\(\)\[\]{}#@!$^&~]+)*')
 
     def doPassiveScan(self, baseRequestResponse):
-
         response = baseRequestResponse.getResponse()
         responseInfo = self._helpers.analyzeResponse(response)
         response_body_offset = responseInfo.getBodyOffset()
         response_body = response[response_body_offset:].tostring()
 
         highlights = []
-
-
         for match in self.windows_path_regex.finditer(response_body):
             start = match.start() + response_body_offset
             end = match.end() + response_body_offset
             highlights.append(array.array('i', [start, end]))
-
-
         for match in self.unix_path_regex.finditer(response_body):
             start = match.start() + response_body_offset
             end = match.end() + response_body_offset
@@ -55,18 +39,14 @@ class BurpExtender(IBurpExtender, IScannerCheck):
 
         if highlights:
             return [self.reportIssue(baseRequestResponse, highlights, "Full Path Disclosure")]
-
         return None
 
     def doActiveScan(self, baseRequestResponse, insertionPoint):
-
         return None
 
     def reportIssue(self, baseRequestResponse, highlights, issue_name):
-
         detail_message = "Full Path Disclosure found in response."
         marked_response = self._callbacks.applyMarkers(baseRequestResponse, None, highlights)
-
         return CustomScanIssue(
             baseRequestResponse.getHttpService(),
             self._helpers.analyzeRequest(baseRequestResponse).getUrl(),
@@ -77,10 +57,12 @@ class BurpExtender(IBurpExtender, IScannerCheck):
         )
 
     def consolidateDuplicateIssues(self, existingIssue, newIssue):
-
         if existingIssue.getIssueDetail() == newIssue.getIssueDetail():
             return -1
         return 0
+
+    def extensionUnloaded(self):
+        print("FPD Scanner extension unloaded.")
 
 
 class CustomScanIssue(IScanIssue):
